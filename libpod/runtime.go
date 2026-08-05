@@ -472,7 +472,6 @@ func makeRuntime(ctx context.Context, runtime *Runtime) (retErr error) {
 		needsUserns = !hasCapSysAdmin
 	}
 	// Set up containers/storage
-	var store storage.Store
 	if needsUserns {
 		logrus.Debug("Not configuring container store")
 	} else if err := runtime.configureStore(); err != nil {
@@ -487,10 +486,10 @@ func makeRuntime(ctx context.Context, runtime *Runtime) (retErr error) {
 		return fmt.Errorf("configure storage: %w", err)
 	}
 	defer func() {
-		if retErr != nil && store != nil {
+		if retErr != nil && runtime.store != nil {
 			// Don't forcibly shut down
 			// We could be opening a store in use by another libpod
-			if _, err := store.Shutdown(false); err != nil {
+			if _, err := runtime.store.Shutdown(false); err != nil {
 				logrus.Errorf("Removing store for partially-created runtime: %s", err)
 			}
 		}
