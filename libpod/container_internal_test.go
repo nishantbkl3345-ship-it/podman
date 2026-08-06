@@ -205,3 +205,25 @@ func TestPostDeleteHooks(t *testing.T) {
 	}
 	assert.Equal(t, strings.TrimSuffix(string(content), "\n"), dir)
 }
+
+func TestHandleExitFile_InvalidStatusCode(t *testing.T) {
+	dir := t.TempDir()
+	exitFile := filepath.Join(dir, "exit")
+	err := os.WriteFile(exitFile, []byte("invalid_int"), 0o644)
+	assert.NoError(t, err)
+
+	fi, err := os.Stat(exitFile)
+	assert.NoError(t, err)
+
+	c := Container{
+		config: &ContainerConfig{
+			ID: "test-container-id-123",
+		},
+		state: &ContainerState{},
+	}
+
+	err = c.handleExitFile(exitFile, fi)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), `converting exit status code "invalid_int" for container test-container-id-123 to int`)
+}
+

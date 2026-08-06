@@ -514,7 +514,7 @@ func (c *Container) ExecHTTPStartAndAttach(sessionID string, r *http.Request, w 
 		session.ExitCode = define.ExecErrorCodeGeneric
 
 		if err := c.save(); err != nil {
-			logrus.Errorf("Saving container %s exec session %s after failure to prepare: %v", err, c.ID(), session.ID())
+			logrus.Errorf("Saving container %s exec session %s after failure to prepare: %v", c.ID(), session.ID(), err)
 		}
 
 		return err
