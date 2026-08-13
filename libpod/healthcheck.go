@@ -51,6 +51,26 @@ func (r *Runtime) HealthCheck(ctx context.Context, name string) (define.HealthCh
 	return hcStatus, err
 }
 
+// startPeriodEndTime returns the time at which the healthcheck start period of
+// the container ends, i.e. the container start time plus the start period.
+//
+// The state must be synced from the DB before StartedTime is read, which
+// requires the lock. A batched container is left alone: Batch() holds the lock
+// for the duration of the batch and has already synced the state, so locking
+// here would deadlock against ourselves.
+func (c *Container) startPeriodEndTime() (time.Time, error) {
+	if !c.batched {
+		c.lock.Lock()
+		// Do not stay locked here, in healthCheckExec it will lock again.
+		defer c.lock.Unlock()
+		if err := c.syncContainer(); err != nil {
+			return time.Time{}, err
+		}
+	}
+	// there is a start-period we need to honor; we add startPeriod to container start time
+	return c.state.StartedTime.Add(c.HealthCheckConfig().StartPeriod), nil
+}
+
 func (c *Container) runHealthCheck(ctx context.Context, isStartup bool) (define.HealthCheckStatus, string, error) {
 	var (
 		newCommand    []string
@@ -60,16 +80,10 @@ func (c *Container) runHealthCheck(ctx context.Context, isStartup bool) (define.
 
 	timeStart := time.Now()
 	if c.HealthCheckConfig().StartPeriod > 0 {
-		// state must be synced from DB
-		c.lock.Lock()
-		if err := c.syncContainer(); err != nil {
-			c.lock.Unlock()
+		startPeriodTime, err := c.startPeriodEndTime()
+		if err != nil {
 			return define.HealthCheckInternalError, "", err
 		}
-		// there is a start-period we need to honor; we add startPeriod to container start time
-		startPeriodTime := c.state.StartedTime.Add(c.HealthCheckConfig().StartPeriod)
-		c.lock.Unlock()
-		// Do not stay locked here, in healthCheckExec it will lock again.
 
 		if timeStart.Before(startPeriodTime) {
 			// we are still in the start period, flip the inStartPeriod bool
