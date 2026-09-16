@@ -138,6 +138,7 @@ func processMultipartQuadlets(tempDir string, r *http.Request) ([]string, error)
 			return nil, fmt.Errorf("failed to read multipart: %w", err)
 		}
 
+ fix-quadlet-multipart-fd-leak
 		filePath, err := writeQuadletPart(quadletDir, part)
 		if err != nil {
 			return nil, err
@@ -145,6 +146,38 @@ func processMultipartQuadlets(tempDir string, r *http.Request) ([]string, error)
 
 		if filePath != "" {
 			filePaths = append(filePaths, filePath)
+
+		filename := part.FileName()
+		if filename == "" {
+			// Skip parts without filenames
+			_ = part.Close()
+			continue
+		}
+		filename = filepath.Base(filename)
+		if filename == "." || filename == ".." || filename == string(filepath.Separator) {
+			_ = part.Close()
+			continue
+		}
+
+		// Write the file in a scope that lets us close it per iteration
+		filePath := filepath.Join(quadletDir, filename)
+		if err := func() error {
+			defer part.Close()
+
+			file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", filename, err)
+			}
+			defer file.Close()
+
+			_, err = io.Copy(file, part)
+			if err != nil {
+				return fmt.Errorf("failed to write file %s: %w", filename, err)
+			}
+			return nil
+		}(); err != nil {
+			return nil, err
+ main
 		}
 	}
 
